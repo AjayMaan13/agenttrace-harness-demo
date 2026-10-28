@@ -92,7 +92,7 @@ async def test_claude_agent_collects_the_answer_tool_calls_and_tokens():
         yield UserMessage(content=[ToolResultBlock(tool_use_id="t1", content=[{"type": "text", "text": '{"open_tickets": 20}'}])])
         yield AssistantMessage(content=[TextBlock(text="done")], model="m")
         yield ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=False, num_turns=2, session_id="s",
-                            result='{"open_tickets": 20, "open_pipeline_usd": 1}', usage={"input_tokens": 50, "output_tokens": 7})
+                            result='{"open_tickets": 20, "open_pipeline_usd": 1}', usage={"input_tokens": 5, "cache_creation_input_tokens": 20, "cache_read_input_tokens": 25, "output_tokens": 7})
 
     from account_health.pipeline import STAGES
 

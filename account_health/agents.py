@@ -73,7 +73,9 @@ def claude_agent(source: Any, bug: bool = False, query_fn: Any = query):
         if final is None or final.is_error:
             raise RuntimeError(f"the {stage.name} agent failed ({getattr(final, 'subtype', 'no result')})")
         usage = final.usage or {}
-        return Reply(parse_json(final.result or ""), list(calls.values()), usage.get("input_tokens", 0), usage.get("output_tokens", 0))
+        # Prompt caching splits the input into three counts; all three were sent to the model.
+        tokens_in = sum(usage.get(k, 0) or 0 for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+        return Reply(parse_json(final.result or ""), list(calls.values()), tokens_in, usage.get("output_tokens", 0))
 
     return agent
 
