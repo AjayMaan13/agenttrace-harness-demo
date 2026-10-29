@@ -42,7 +42,7 @@ Make a second key that can **run forks** and put it in `.env` as `AGENTTRACE_WOR
 .venv/bin/python -m account_health.worker
 ```
 
-The worker connects out to AgentTrace; nothing connects in. In AgentTrace, open a `--bug` run, fork at the researcher with the right facts, and the analyst and writer run again here, live, with and without the change. Live steps are sampled, so AgentTrace repeats each side and reports k of N with a p-value, labelled directional.
+The worker connects out to AgentTrace; nothing connects in. It runs `WORKER_JOBS_AT_ONCE` jobs side by side (default 3), so a fork finishes sooner; AgentTrace hands each job to only one of them. In AgentTrace, open a `--bug` run, fork at the researcher with the right facts, and the analyst and writer run again here, live, with and without the change. Live steps are sampled, so AgentTrace repeats each side and reports k of N with a p-value, labelled directional.
 
 `safe_to_rerun=True` in `account_health/worker.py` is a statement that re-running these agents is harmless. It is, because they only read data.
 

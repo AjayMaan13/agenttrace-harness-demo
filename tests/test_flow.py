@@ -116,6 +116,17 @@ async def test_claude_agent_raises_when_the_agent_fails():
         await claude_agent(SOURCE, query_fn=failing)(STAGES[0], {"account_id": "acct-1"})
 
 
+def test_the_worker_runs_several_jobs_side_by_side(monkeypatch):
+    from account_health import worker as worker_module
+
+    monkeypatch.setenv("AGENTTRACE_API_URL", "http://localhost:1")
+    monkeypatch.setenv("AGENTTRACE_WORKER_KEY", "not-a-real-key")
+    workers = worker_module.make_workers(3)
+    assert [w.name for w in workers] == ["account-health-1", "account-health-2", "account-health-3"]
+    assert all("account-health-brief" in w._flows for w in workers)
+    assert 1 <= worker_module.WORKER_JOBS_AT_ONCE <= 6
+
+
 def test_the_lookups_are_offered_as_an_in_process_server():
     server = build_server(SOURCE)
     assert server["type"] == "sdk" and server["name"] == "data"
