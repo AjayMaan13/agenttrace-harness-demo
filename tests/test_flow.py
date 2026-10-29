@@ -127,6 +127,22 @@ def test_the_worker_runs_several_jobs_side_by_side(monkeypatch):
     assert 1 <= worker_module.WORKER_JOBS_AT_ONCE <= 6
 
 
+async def test_a_fork_job_prints_when_it_starts_and_when_it_ends(monkeypatch, capsys):
+    from account_health import worker as worker_module
+
+    monkeypatch.setenv("AGENTTRACE_API_URL", "http://localhost:1")
+    monkeypatch.setenv("AGENTTRACE_WORKER_KEY", "not-a-real-key")
+    monkeypatch.setattr(worker_module, "claude_agent", lambda source: fake_agent())  # no model call
+    resume = worker_module.make_worker("w1")._flows["account-health-brief"].resume
+    truth = await ground_truth(SOURCE, "acct-1")
+    state = {"account_id": "acct-1", "expected": truth, "facts": {"open_tickets": 20, "open_pipeline_usd": 77000.5}}
+    async with RunRecorder(ListSink(), "account-health-brief", oracle=brief_matches_data) as rec:
+        rec.final_state = await resume(state, rec)
+    out = capsys.readouterr().out
+    assert "[w1] fork job taken, starting from facts = {'open_tickets': 20" in out
+    assert "[w1] fork job done" in out and ": pass (" in out
+
+
 def test_the_lookups_are_offered_as_an_in_process_server():
     server = build_server(SOURCE)
     assert server["type"] == "sdk" and server["name"] == "data"
