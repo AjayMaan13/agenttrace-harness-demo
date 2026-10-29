@@ -26,6 +26,14 @@ cp .env.example .env        # then fill in .env yourself; it is gitignored
 
 Each Claude run makes three small calls (Haiku) and needs `ANTHROPIC_API_KEY`. `--offline` swaps the three agents for stand-ins that answer from the same lookups with a simple rule. It is for trying the AgentTrace connection first; the stand-ins' steps are labelled `offline-stand-in` so nobody mistakes them for Claude.
 
+## Drive it from a page
+
+```bash
+.venv/bin/python -m account_health.ui        # then open http://127.0.0.1:8765
+```
+
+One page, three buttons: **Start worker** (turns green when AgentTrace has answered), **Send the right run** and **Send the wrong run**. It calls the same code as `run.py` and `worker.py`, shows the check's verdict and the brief, and lists what the worker is doing. It listens on this machine only. Use it instead of the two commands, not next to the worker command (that would start a second worker).
+
 ## Connect it to AgentTrace
 
 1. In AgentTrace, open **Connect your agents** and **make a key** that can send runs. Put it in `.env` as `AGENTTRACE_INGEST_KEY`, with your API address as `AGENTTRACE_API_URL`.
@@ -56,6 +64,7 @@ The worker connects out to AgentTrace; nothing connects in. It runs `WORKER_JOBS
 | `account_health/data.py` | The built-in company. |
 | `account_health/check.py` | The right-or-wrong check. |
 | `account_health/run.py`, `worker.py` | Run once; run as a fork worker. |
+| `account_health/ui.py`, `ui.html` | The page with the three buttons. |
 
 ## Limits
 

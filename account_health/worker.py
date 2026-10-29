@@ -13,6 +13,8 @@ import asyncio
 import logging
 import os
 import time
+from collections import deque
+from typing import Any
 from urllib.parse import urlparse
 
 from agenttrace_sdk import Worker
@@ -26,9 +28,28 @@ from account_health.pipeline import run_pipeline
 HEARTBEAT_S = 30
 jobs_done = 0
 
+# What the page in ui.py shows: the last lines said, and whether the last call to AgentTrace worked.
+LOG: deque[dict[str, str]] = deque(maxlen=60)
+STATUS: dict[str, Any] = {"connected": None, "detail": ""}  # connected is None until the first call comes back
+
 
 def say(who: str, text: str) -> None:
-    print(f"{time.strftime('%H:%M:%S')} [{who}] {text}", flush=True)
+    stamp = time.strftime("%H:%M:%S")
+    LOG.append({"time": stamp, "who": who, "text": text})
+    print(f"{stamp} [{who}] {text}", flush=True)
+
+
+class _Tracked(Worker):
+    """The SDK worker, noting whether its last ask for a job got an answer (run_once is its public step)."""
+
+    async def run_once(self) -> bool:
+        try:
+            busy = await super().run_once()
+        except Exception as exc:
+            STATUS.update(connected=False, detail=str(getattr(exc, "detail", "") or type(exc).__name__))
+            raise
+        STATUS.update(connected=True, detail="")
+        return busy
 
 
 def make_worker(name: str = "account-health") -> Worker:
@@ -48,7 +69,7 @@ def make_worker(name: str = "account-health") -> Worker:
         say(name, f"fork job done in {time.monotonic() - started:.0f}s: {'pass' if ok else 'fail'} ({reason})")
         return final
 
-    worker = Worker(os.environ["AGENTTRACE_API_URL"], os.environ["AGENTTRACE_WORKER_KEY"], name=name)
+    worker = _Tracked(os.environ["AGENTTRACE_API_URL"], os.environ["AGENTTRACE_WORKER_KEY"], name=name)
     # safe_to_rerun: a fork runs the agents again, live, several times. Ours only read data, so that is safe.
     worker.register(WORKFLOW, resume, oracle=brief_matches_data, safe_to_rerun=True)
     return worker

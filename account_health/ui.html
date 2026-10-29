@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Account health demo</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #fff; --ink: #1c1c1a; --muted: #6a6a64; --line: #dcdad2;
+    --good: #1a7f37; --good-bg: #dff4e4; --bad: #b42318; --bad-bg: #fde4e1; --wait: #8a5a00; --wait-bg: #fff1cc; --off-bg: #ecebe5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161614; --card: #20201d; --ink: #f1f0ea; --muted: #a3a29a; --line: #3a3a35;
+      --good: #6fd08a; --good-bg: #17331f; --bad: #ff8b7e; --bad-bg: #3a1a17; --wait: #f0c25a; --wait-bg: #3a2c0a; --off-bg: #2c2c28; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 18px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 24px 64px; display: grid; gap: 20px; }
+  h1 { font-size: 2rem; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 1.15rem; margin: 0 0 4px; }
+  .sub, .hint { color: var(--muted); margin: 4px 0 0; font-size: 1rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 14px; }
+  button { font: inherit; font-weight: 600; padding: 12px 22px; border-radius: 10px; border: 2px solid var(--ink); background: var(--ink); color: var(--bg); cursor: pointer; }
+  button.alt { background: transparent; color: var(--ink); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button:focus-visible, input:focus-visible { outline: 3px solid #3b82f6; outline-offset: 2px; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 1rem; background: var(--off-bg); color: var(--muted); }
+  .pill.good { background: var(--good-bg); color: var(--good); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill.wait { background: var(--wait-bg); color: var(--wait); }
+  .check { display: flex; gap: 8px; align-items: center; margin-top: 14px; color: var(--muted); font-size: 0.95rem; }
+  .result { margin-top: 18px; display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 16px; }
+  .result[hidden] { display: none; }
+  .result p { margin: 0; }
+  .meta { color: var(--muted); font-size: 0.9rem; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  pre { margin: 10px 0 0; font-size: 0.85rem; line-height: 1.55; max-height: 240px; overflow: auto; white-space: pre-wrap; color: var(--muted); }
+  .err { color: var(--bad); margin-top: 10px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Account health brief</h1>
+    <p class="sub">Three Claude agents write a brief and report to AgentTrace. Steps that run live are sampled, never deterministic.</p>
+  </header>
+
+  <section class="card" aria-labelledby="h-worker">
+    <h2 id="h-worker">1. Start the worker</h2>
+    <p class="hint">It runs fork jobs here, on this machine, and only connects out to AgentTrace.</p>
+    <div class="row">
+      <button id="start">Start worker</button>
+      <span id="wstatus" class="pill" role="status" aria-live="polite">Not started</span>
+    </div>
+    <p id="werr" class="err" role="alert" hidden></p>
+  </section>
+
+  <section class="card" aria-labelledby="h-run">
+    <h2 id="h-run">2. Send a run</h2>
+    <p class="hint">Each run takes about 12 seconds. The wrong one has a bug planted in the researcher's ticket lookup.</p>
+    <div class="row">
+      <button id="good">Send the right run</button>
+      <button id="bad" class="alt">Send the wrong run</button>
+    </div>
+    <label class="check"><input type="checkbox" id="offline"> Use stand-in agents instead of Claude (no tokens)</label>
+    <p id="rerr" class="err" role="alert" hidden></p>
+    <div id="result" class="result" hidden></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-log">
+    <h2 id="h-log">Worker activity</h2>
+    <pre id="log" aria-live="polite">Nothing yet.</pre>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const headers = { "Content-Type": "application/json", "X-Demo": "1" };
+let running = false;
+
+function setPill(el, kind, text) { el.className = "pill " + kind; el.textContent = text; }
+
+function renderWorker(w) {
+  const pill = $("wstatus");
+  $("start").disabled = w.started;
+  $("start").textContent = w.started ? "Worker started" : "Start worker";
+  if (!w.started) return setPill(pill, "", "Not started");
+  if (w.connected === true) return setPill(pill, "good", "● Connected: asking " + w.host + " for fork jobs");
+  if (w.connected === false) return setPill(pill, "bad", "● Cannot reach AgentTrace: " + (w.detail || "no answer"));
+  setPill(pill, "wait", "● Connecting…");
+}
+
+function renderResult(r) {
+  const box = $("result");
+  if (!r) { box.hidden = true; return; }
+  box.hidden = false;
+  box.replaceChildren();
+  const pill = document.createElement("span");
+  const passed = r.outcome === "pass";
+  pill.className = "pill " + (passed ? "good" : "bad");
+  pill.textContent = passed ? "✓ Passed the check" : "✕ Failed the check";
+  const head = document.createElement("p");
+  head.append(pill);
+  const reason = document.createElement("p"); reason.textContent = r.reason;
+  const brief = document.createElement("p"); brief.textContent = "Brief: " + r.brief;
+  const meta = document.createElement("p"); meta.className = "meta";
+  const where = r.sent_to ? "Sent to AgentTrace (" + r.sent_to + ")" : "Not sent: no AGENTTRACE_* settings";
+  meta.textContent = [r.bug ? "wrong run (bug planted)" : "right run", r.offline ? "stand-in agents" : "Claude", where, "run " + r.run_id].join(" · ");
+  box.append(head, reason, brief, meta);
+}
+
+async function refresh() {
+  try {
+    const s = await (await fetch("/api/state")).json();
+    renderWorker(s.worker);
+    $("log").textContent = s.log.length ? s.log.map((l) => l.time + " [" + l.who + "] " + l.text).join("\n") : "Nothing yet.";
+    if (!running) renderResult(s.runs[0]);
+  } catch { /* the page keeps trying */ }
+}
+
+$("start").onclick = async () => {
+  $("werr").hidden = true;
+  const res = await fetch("/api/worker/start", { method: "POST", headers });
+  if (!res.ok) { $("werr").textContent = (await res.json()).error; $("werr").hidden = false; }
+  refresh();
+};
+
+async function send(bug) {
+  running = true; $("rerr").hidden = true;
+  $("good").disabled = $("bad").disabled = true;
+  const btn = bug ? $("bad") : $("good"); const label = btn.textContent;
+  btn.textContent = "Running…";
+  try {
+    const res = await fetch("/api/run", { method: "POST", headers, body: JSON.stringify({ bug, offline: $("offline").checked }) });
+    const data = await res.json();
+    if (!res.ok) { $("rerr").textContent = data.error; $("rerr").hidden = false; } else { renderResult(data); }
+  } catch (e) { $("rerr").textContent = "The page lost the server."; $("rerr").hidden = false; }
+  running = false; btn.textContent = label;
+  $("good").disabled = $("bad").disabled = false;
+}
+$("good").onclick = () => send(false);
+$("bad").onclick = () => send(true);
+
+refresh(); setInterval(refresh, 1500);
+</script>
+</body>
+</html>

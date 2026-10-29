@@ -1,4 +1,7 @@
 claude-agent-sdk
 python-dotenv
+# The page in account_health/ui.py. Both already come with claude-agent-sdk; named here because ui.py imports them.
+starlette
+uvicorn
 # AgentTrace's recorder and worker. Stdlib only, installed from GitHub (no PyPI release yet).
 agenttrace-sdk @ git+https://github.com/AjayMaan13/AgentTrace.git#subdirectory=sdk
