@@ -2,11 +2,24 @@
 
 An example agent workflow, written separately from [AgentTrace](https://github.com/AjayMaan13/AgentTrace), that records its runs into AgentTrace through the **Connect your agents** steps.
 
-Three Claude agents, built on the Claude Agent SDK, write an account health brief:
+Three Claude agents, built on the Claude Agent SDK and run as a [LangGraph](https://github.com/langchain-ai/langgraph) graph, write an account health brief:
 
 ```
 researcher  ->  analyst  ->  writer
 (looks up the account's tickets and open deals)   (judges renewal risk)   (writes the brief and states the numbers)
+```
+
+Each agent is one node of a LangGraph `StateGraph`; LangGraph runs them in order over one shared state, and each node records its turn into AgentTrace.
+
+```mermaid
+flowchart LR
+  S([start]) --> R["researcher<br/>ticket_summary, pipeline_summary"]
+  R --> A[analyst]
+  A --> W[writer]
+  W --> E([end])
+  R -.->|"one recorded turn each"| AT[(AgentTrace)]
+  A -.-> AT
+  W -.-> AT
 ```
 
 A check written in code decides whether the brief is right: the open-ticket count and the open pipeline in the brief must match the data. The data is a small built-in company (`acct-1` with 40 tickets and 3 open deals, `acct-2` with 5 tickets), so nothing outside this repo is needed.
@@ -58,7 +71,7 @@ The worker connects out to AgentTrace; nothing connects in. It runs `WORKER_JOBS
 
 | File | What it does |
 | --- | --- |
-| `account_health/pipeline.py` | The three stages, and the loop that records each as a turn. A stage is skipped if the state already holds its answer, which is how a fork resumes. |
+| `account_health/pipeline.py` | The LangGraph graph: the three stages as nodes, in order, each recording its turn. A node is skipped if the state already holds its answer, which is how a fork resumes. |
 | `account_health/agents.py` | Runs one agent with the Claude Agent SDK and collects its answer and tool calls; also the offline stand-ins. |
 | `account_health/tools.py` | The lookups (and the planted bug), offered to the researcher as tools. |
 | `account_health/data.py` | The built-in company. |
@@ -68,5 +81,8 @@ The worker connects out to AgentTrace; nothing connects in. It runs `WORKER_JOBS
 
 ## Limits
 
+- LangGraph is this example's own way of running its three agents. AgentTrace does not depend on it. The nodes record their turns with the AgentTrace recorder, which keeps the tool calls, tokens and state and lets a run be forked; the SDK's separate `record_langgraph` adapter reads only LangGraph's update stream and gives a view-only run, so it is not used here.
+- `langgraph` installs `langchain-core`. Nothing else from LangChain is used, and this repo sets no LangSmith key, so nothing is sent to LangSmith.
+- The graph is tested offline (its shape, its order, and a fork resuming from the facts). It has not been run against Claude since LangGraph was added.
 - This is one example workflow, not an adapter. It shows that an agent built on the Claude Agent SDK can report into AgentTrace by calling the recorder; it does not make the Claude Agent SDK "supported".
 - Results from forks are directional, never proof.

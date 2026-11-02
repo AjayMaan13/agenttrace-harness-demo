@@ -1,4 +1,5 @@
 claude-agent-sdk
+langgraph>=1.2,<2
 python-dotenv
 # The page in account_health/ui.py. Both already come with claude-agent-sdk; named here because ui.py imports them.
 starlette

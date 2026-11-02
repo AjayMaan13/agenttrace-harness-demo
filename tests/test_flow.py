@@ -146,3 +146,30 @@ async def test_a_fork_job_prints_when_it_starts_and_when_it_ends(monkeypatch, ca
 def test_the_lookups_are_offered_as_an_in_process_server():
     server = build_server(SOURCE)
     assert server["type"] == "sdk" and server["name"] == "data"
+
+
+def test_the_workflow_is_a_langgraph_graph_in_this_order():
+    from langgraph.graph.state import CompiledStateGraph
+
+    from account_health.pipeline import build_graph
+
+    graph = build_graph(None, None)
+    assert isinstance(graph, CompiledStateGraph)
+    drawn = graph.get_graph()
+    assert [n for n in drawn.nodes if not n.startswith("__")] == ["researcher", "analyst", "writer"]
+    assert {(e.source, e.target) for e in drawn.edges} == {
+        ("__start__", "researcher"), ("researcher", "analyst"), ("analyst", "writer"), ("writer", "__end__"),
+    }
+
+
+async def test_langgraph_streams_one_update_per_agent_and_each_is_recorded():
+    from account_health.pipeline import build_graph
+
+    sink = ListSink()
+    state = {"account_id": "acct-1", "expected": await ground_truth(SOURCE, "acct-1")}
+    async with RunRecorder(sink, "account-health-brief", oracle=brief_matches_data) as rec:
+        chunks = [chunk async for chunk in build_graph(rec, fake_agent()).astream(state, stream_mode="updates")]
+        rec.final_state = {**state, **{k: v for chunk in chunks for update in chunk.values() for k, v in update.items()}}
+    assert [list(chunk) for chunk in chunks] == [["researcher"], ["analyst"], ["writer"]]  # one node after the other
+    assert rec.outcome == "pass"
+    assert [s["agent"] for s in sink.steps_for(rec.id) if s["kind"] == "llm"] == ["researcher", "analyst", "writer"]
